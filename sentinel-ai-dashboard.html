@@ -1,0 +1,1241 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+  <title>SentinelAI — Threat Detection Dashboard</title>
+
+  <!-- Chart.js for data visualisation -->
+  <script src="https://cdnjs.cloudflare.com/ajax/libs/Chart.js/4.4.1/chart.umd.js"></script>
+
+  <!-- Tabler Icons (outline set) -->
+  <link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/tabler-icons/3.34.0/fonts/tabler-icons.min.css" />
+
+  <!-- Google Fonts: JetBrains Mono (monospace data) + DM Sans (UI copy) -->
+  <link rel="preconnect" href="https://fonts.googleapis.com" />
+  <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin />
+  <link href="https://fonts.googleapis.com/css2?family=DM+Sans:wght@400;500;600&family=JetBrains+Mono:wght@400;500&display=swap" rel="stylesheet" />
+
+  <style>
+    /* ═══════════════════════════════════════════════════
+       DESIGN TOKENS  ─  single source of truth
+    ═══════════════════════════════════════════════════ */
+    :root {
+      --bg-base:       #0a0c10;
+      --bg-surface:    #111318;
+      --bg-elevated:   #181c24;
+      --bg-hover:      #1f2430;
+
+      --border:        rgba(255,255,255,.07);
+      --border-active: rgba(255,255,255,.16);
+
+      --text-primary:  #e8ecf4;
+      --text-secondary:#7c8496;
+      --text-tertiary: #4a5168;
+
+      --red:     #e24b4a;
+      --red-dim:  rgba(226,75,74,.15);
+      --amber:   #ef9f27;
+      --amber-dim:rgba(239,159,39,.15);
+      --blue:    #378add;
+      --blue-dim: rgba(55,138,221,.15);
+      --green:   #22c55e;
+      --green-dim:rgba(34,197,94,.15);
+      --purple:  #a78bfa;
+
+      --font-ui:   'DM Sans', sans-serif;
+      --font-mono: 'JetBrains Mono', monospace;
+
+      --radius-sm: 6px;
+      --radius-md: 10px;
+      --radius-lg: 14px;
+
+      --transition: .18s ease;
+    }
+
+    /* ═══════════════════════════════════════════════════
+       RESET & BASE
+    ═══════════════════════════════════════════════════ */
+    *, *::before, *::after { box-sizing: border-box; margin: 0; padding: 0; }
+    html, body {
+      background: var(--bg-base);
+      color: var(--text-primary);
+      font-family: var(--font-ui);
+      font-size: 14px;
+      line-height: 1.5;
+      min-height: 100vh;
+    }
+    ::-webkit-scrollbar { width: 5px; }
+    ::-webkit-scrollbar-track { background: var(--bg-base); }
+    ::-webkit-scrollbar-thumb { background: var(--border-active); border-radius: 99px; }
+
+    /* ═══════════════════════════════════════════════════
+       LAYOUT
+    ═══════════════════════════════════════════════════ */
+    .app {
+      display: grid;
+      grid-template-rows: 54px 1fr;
+      grid-template-columns: 220px 1fr;
+      height: 100vh;
+      overflow: hidden;
+    }
+
+    /* ── Top bar ── */
+    .topbar {
+      grid-column: 1 / -1;
+      display: flex;
+      align-items: center;
+      justify-content: space-between;
+      padding: 0 20px;
+      border-bottom: 1px solid var(--border);
+      background: var(--bg-surface);
+      z-index: 10;
+    }
+    .topbar-left { display: flex; align-items: center; gap: 20px; }
+    .logo {
+      display: flex; align-items: center; gap: 8px;
+      font-size: 15px; font-weight: 600; letter-spacing: -.3px;
+    }
+    .logo i { font-size: 18px; color: var(--red); }
+    .logo span { color: var(--red); }
+    .live-pill {
+      display: flex; align-items: center; gap: 6px;
+      font-size: 11px; font-family: var(--font-mono);
+      color: var(--green); background: var(--green-dim);
+      padding: 3px 10px; border-radius: 99px;
+    }
+    .live-dot {
+      width: 6px; height: 6px; border-radius: 50%;
+      background: var(--green); animation: pulse 2s infinite;
+    }
+    @keyframes pulse { 0%,100%{opacity:1} 50%{opacity:.3} }
+    .topbar-right { display: flex; align-items: center; gap: 10px; }
+    .clock {
+      font-family: var(--font-mono); font-size: 12px;
+      color: var(--text-secondary);
+    }
+    .topbar-badge {
+      display: flex; align-items: center; gap: 5px;
+      font-size: 11px; padding: 3px 10px; border-radius: 99px;
+      font-weight: 500; cursor: default;
+    }
+    .badge-red   { background: var(--red-dim);   color: var(--red); }
+    .badge-amber { background: var(--amber-dim); color: var(--amber); }
+    .btn-icon {
+      background: var(--bg-elevated); border: 1px solid var(--border);
+      color: var(--text-secondary); border-radius: var(--radius-sm);
+      padding: 5px 8px; cursor: pointer; font-size: 14px;
+      transition: var(--transition);
+    }
+    .btn-icon:hover { background: var(--bg-hover); color: var(--text-primary); }
+
+    /* ── Sidebar ── */
+    .sidebar {
+      background: var(--bg-surface);
+      border-right: 1px solid var(--border);
+      padding: 14px 10px;
+      overflow-y: auto;
+      display: flex; flex-direction: column; gap: 2px;
+    }
+    .nav-section-label {
+      font-size: 10px; font-weight: 600; letter-spacing: .08em;
+      color: var(--text-tertiary); text-transform: uppercase;
+      padding: 10px 8px 4px;
+    }
+    .nav-item {
+      display: flex; align-items: center; gap: 10px;
+      padding: 8px 10px; border-radius: var(--radius-sm);
+      color: var(--text-secondary); font-size: 13px;
+      cursor: pointer; transition: var(--transition);
+      text-decoration: none;
+      width: 100%;
+    }
+    .nav-item:hover { background: var(--bg-hover); color: var(--text-primary); }
+    .nav-item.active {
+      background: var(--red-dim); color: var(--red);
+      font-weight: 500;
+    }
+    .nav-item i { font-size: 16px; flex-shrink: 0; }
+    .nav-badge {
+      margin-left: auto; font-size: 10px; font-family: var(--font-mono);
+      background: var(--red); color: white;
+      padding: 1px 6px; border-radius: 99px;
+    }
+
+    /* ── Main scroll area ── */
+    .main {
+      overflow-y: auto;
+      padding: 20px;
+      display: flex; flex-direction: column; gap: 16px;
+      background: var(--bg-base);
+    }
+
+    /* ── Page sections (show/hide) ── */
+    .page-section { display: none; flex-direction: column; gap: 16px; }
+    .page-section.active { display: flex; }
+
+    /* ── Toast notifications ── */
+    .toast-container {
+      position: fixed; bottom: 20px; right: 20px;
+      display: flex; flex-direction: column; gap: 8px;
+      z-index: 9999; pointer-events: none;
+    }
+    .toast {
+      display: flex; align-items: center; gap: 10px;
+      padding: 12px 18px; border-radius: var(--radius-md);
+      background: var(--bg-elevated); border: 1px solid var(--border-active);
+      color: var(--text-primary); font-size: 13px;
+      box-shadow: 0 8px 24px rgba(0,0,0,.4);
+      transform: translateX(120%); transition: transform .3s ease;
+      pointer-events: auto; max-width: 380px;
+    }
+    .toast.show { transform: translateX(0); }
+    .toast i { font-size: 18px; flex-shrink: 0; }
+    .toast.toast-success i { color: var(--green); }
+    .toast.toast-danger  i { color: var(--red); }
+    .toast.toast-info    i { color: var(--blue); }
+    .toast.toast-warn    i { color: var(--amber); }
+
+    /* ── Data tables ── */
+    .data-table { width: 100%; border-collapse: collapse; }
+    .data-table th {
+      text-align: left; font-size: 10px; font-weight: 600;
+      color: var(--text-tertiary); text-transform: uppercase;
+      letter-spacing: .06em; padding: 8px 10px;
+      border-bottom: 1px solid var(--border);
+    }
+    .data-table td {
+      font-size: 12px; color: var(--text-secondary); padding: 8px 10px;
+      border-bottom: 1px solid var(--border);
+    }
+    .data-table tr:hover td { background: var(--bg-hover); color: var(--text-primary); }
+
+    /* ── Settings form ── */
+    .form-group { display: flex; flex-direction: column; gap: 5px; }
+    .form-label {
+      font-size: 11px; font-weight: 500; color: var(--text-secondary);
+      text-transform: uppercase; letter-spacing: .04em;
+    }
+    .form-input {
+      background: var(--bg-elevated); border: 1px solid var(--border);
+      color: var(--text-primary); border-radius: var(--radius-sm);
+      padding: 8px 12px; font-size: 13px; font-family: var(--font-ui);
+      transition: var(--transition); outline: none;
+    }
+    .form-input:focus { border-color: var(--red); }
+    .form-input::placeholder { color: var(--text-tertiary); }
+    .toggle-wrap {
+      display: flex; align-items: center; justify-content: space-between;
+      padding: 10px 0; border-bottom: 1px solid var(--border);
+    }
+    .toggle-label { font-size: 13px; color: var(--text-primary); }
+    .toggle-desc { font-size: 11px; color: var(--text-tertiary); margin-top: 2px; }
+    .toggle {
+      position: relative; width: 40px; height: 22px;
+      background: var(--bg-hover); border-radius: 11px;
+      cursor: pointer; transition: var(--transition);
+      flex-shrink: 0;
+    }
+    .toggle.on { background: var(--red); }
+    .toggle::after {
+      content: ''; position: absolute; top: 3px; left: 3px;
+      width: 16px; height: 16px; border-radius: 50%;
+      background: white; transition: var(--transition);
+    }
+    .toggle.on::after { left: 21px; }
+
+    /* ── Page header ── */
+    .page-header {
+      display: flex; align-items: center; justify-content: space-between;
+    }
+    .page-title {
+      font-size: 18px; font-weight: 600; color: var(--text-primary);
+      display: flex; align-items: center; gap: 10px;
+    }
+    .page-title i { color: var(--red); font-size: 20px; }
+    .page-desc { font-size: 12px; color: var(--text-tertiary); margin-top: 4px; }
+
+    /* ═══════════════════════════════════════════════════
+       CARDS
+    ═══════════════════════════════════════════════════ */
+    .card {
+      background: var(--bg-surface);
+      border: 1px solid var(--border);
+      border-radius: var(--radius-lg);
+      padding: 16px;
+    }
+    .card-header {
+      display: flex; align-items: center; justify-content: space-between;
+      margin-bottom: 14px;
+    }
+    .card-title {
+      display: flex; align-items: center; gap: 7px;
+      font-size: 12px; font-weight: 500;
+      color: var(--text-secondary); text-transform: uppercase;
+      letter-spacing: .06em;
+    }
+    .card-title i { font-size: 15px; }
+
+    /* ═══════════════════════════════════════════════════
+       METRIC CARDS ROW
+    ═══════════════════════════════════════════════════ */
+    .metrics { display: grid; grid-template-columns: repeat(4,1fr); gap: 12px; }
+    .metric {
+      background: var(--bg-elevated);
+      border: 1px solid var(--border);
+      border-radius: var(--radius-md);
+      padding: 14px 16px;
+      position: relative; overflow: hidden;
+    }
+    .metric::before {
+      content: ''; position: absolute; left: 0; top: 0; bottom: 0;
+      width: 3px; border-radius: 99px 0 0 99px;
+    }
+    .metric.danger::before { background: var(--red); }
+    .metric.warn::before   { background: var(--amber); }
+    .metric.info::before   { background: var(--blue); }
+    .metric.ok::before     { background: var(--green); }
+    .metric-label {
+      font-size: 11px; color: var(--text-secondary);
+      margin-bottom: 6px; display: flex; align-items: center; gap: 5px;
+    }
+    .metric-label i { font-size: 13px; }
+    .metric-value {
+      font-size: 26px; font-weight: 600; font-family: var(--font-mono);
+      color: var(--text-primary); line-height: 1;
+    }
+    .metric-sub {
+      font-size: 10px; color: var(--text-tertiary);
+      margin-top: 4px; font-family: var(--font-mono);
+    }
+    .metric-sub.up   { color: var(--red); }
+    .metric-sub.down { color: var(--green); }
+
+    /* ═══════════════════════════════════════════════════
+       MID ROW  (Threat Feed + Geo Origins)
+    ═══════════════════════════════════════════════════ */
+    .mid { display: grid; grid-template-columns: 1.4fr 1fr; gap: 12px; }
+
+    /* Threat feed */
+    .threat-feed { display: flex; flex-direction: column; gap: 5px; }
+    .threat-row {
+      display: flex; align-items: center; gap: 10px;
+      padding: 8px 10px; border-radius: var(--radius-sm);
+      background: var(--bg-elevated); cursor: pointer;
+      border: 1px solid transparent;
+      transition: var(--transition);
+    }
+    .threat-row:hover { border-color: var(--border-active); }
+    .threat-icon {
+      width: 30px; height: 30px; border-radius: 50%;
+      display: flex; align-items: center; justify-content: center;
+      font-size: 14px; flex-shrink: 0;
+    }
+    .t-critical { background: var(--red-dim);   color: var(--red); }
+    .t-high     { background: var(--amber-dim); color: var(--amber); }
+    .t-medium   { background: var(--blue-dim);  color: var(--blue); }
+    .threat-name {
+      font-size: 12px; font-weight: 500; color: var(--text-primary);
+      white-space: nowrap; overflow: hidden; text-overflow: ellipsis;
+    }
+    .threat-meta { font-size: 10px; color: var(--text-tertiary); font-family: var(--font-mono); }
+    .sev-pill {
+      font-size: 10px; padding: 2px 7px; border-radius: 99px;
+      font-weight: 500; flex-shrink: 0; font-family: var(--font-mono);
+    }
+    .sev-critical { background: var(--red-dim);   color: var(--red); }
+    .sev-high     { background: var(--amber-dim); color: var(--amber); }
+    .sev-medium   { background: var(--blue-dim);  color: var(--blue); }
+
+    /* Geo origins */
+    .geo-list { display: flex; flex-direction: column; gap: 7px; }
+    .geo-row { display: flex; align-items: center; gap: 8px; }
+    .geo-flag { font-size: 16px; flex-shrink: 0; }
+    .geo-name { font-size: 12px; color: var(--text-secondary); width: 72px; flex-shrink: 0; }
+    .geo-bar-wrap { flex: 1; height: 4px; background: var(--bg-hover); border-radius: 2px; overflow: hidden; }
+    .geo-bar { height: 100%; border-radius: 2px; background: var(--red); }
+    .geo-count { font-size: 11px; color: var(--text-primary); font-family: var(--font-mono); width: 36px; text-align: right; }
+
+    /* ═══════════════════════════════════════════════════
+       BOTTOM ROW  (Models + Sparkline | Alerts | Stats)
+    ═══════════════════════════════════════════════════ */
+    .bottom { display: grid; grid-template-columns: 1.6fr 1fr 1fr; gap: 12px; }
+
+    /* Model list */
+    .model-list { display: flex; flex-direction: column; gap: 6px; }
+    .model-row {
+      display: flex; align-items: center; gap: 10px;
+      padding: 7px 10px; border-radius: var(--radius-sm);
+      background: var(--bg-elevated);
+    }
+    .model-name { font-size: 12px; color: var(--text-secondary); width: 110px; flex-shrink: 0; }
+    .acc-bar-wrap { flex: 1; height: 5px; background: var(--bg-hover); border-radius: 3px; overflow: hidden; }
+    .acc-bar { height: 100%; border-radius: 3px; }
+    .acc-val { font-size: 11px; font-weight: 500; color: var(--text-primary); font-family: var(--font-mono); width: 38px; text-align: right; }
+    .sparkline { display: flex; align-items: flex-end; gap: 2px; height: 40px; margin-top: 10px; }
+    .spark-bar {
+      flex: 1; border-radius: 2px 2px 0 0;
+      background: var(--red); transition: opacity .15s;
+    }
+    .spark-bar:hover { opacity: 1 !important; }
+
+    /* Alert log */
+    .alert-feed { display: flex; flex-direction: column; gap: 5px; overflow-y: auto; max-height: 240px; }
+    .alert-item {
+      padding: 7px 10px; border-radius: var(--radius-sm);
+      background: var(--bg-elevated);
+      border-left: 3px solid;
+    }
+    .alert-item.critical { border-color: var(--red); }
+    .alert-item.high     { border-color: var(--amber); }
+    .alert-item.medium   { border-color: var(--blue); }
+    .alert-text { font-size: 11px; color: var(--text-primary); line-height: 1.4; }
+    .alert-ts   { font-size: 10px; color: var(--text-tertiary); font-family: var(--font-mono); margin-top: 2px; }
+
+    /* Auth / type stats */
+    .stat-grid { display: grid; grid-template-columns: 1fr 1fr; gap: 6px; }
+    .stat-cell {
+      background: var(--bg-elevated); border-radius: var(--radius-sm);
+      padding: 10px; text-align: center;
+    }
+    .stat-val { font-size: 20px; font-weight: 600; font-family: var(--font-mono); color: var(--text-primary); }
+    .stat-lbl { font-size: 10px; color: var(--text-tertiary); margin-top: 2px; }
+
+    /* Chart container */
+    .chart-wrap { position: relative; width: 100%; height: 120px; margin-top: 8px; }
+
+    /* ═══════════════════════════════════════════════════
+       ACTIONS  (bottom bar)
+    ═══════════════════════════════════════════════════ */
+    .actions {
+      display: flex; gap: 8px; flex-wrap: wrap;
+    }
+    .action-btn {
+      display: flex; align-items: center; gap: 7px;
+      padding: 8px 14px; border-radius: var(--radius-sm);
+      border: 1px solid var(--border);
+      background: var(--bg-elevated);
+      color: var(--text-secondary); font-size: 12px;
+      cursor: pointer; transition: var(--transition);
+      font-family: var(--font-ui);
+    }
+    .action-btn:hover { background: var(--bg-hover); border-color: var(--border-active); color: var(--text-primary); }
+    .action-btn i { font-size: 15px; }
+    .action-btn.primary { background: var(--red-dim); border-color: rgba(226,75,74,.3); color: var(--red); }
+    .action-btn.primary:hover { background: rgba(226,75,74,.25); }
+
+    /* ── Responsive ── */
+    @media (max-width: 1100px) {
+      .metrics { grid-template-columns: repeat(2,1fr); }
+      .mid     { grid-template-columns: 1fr; }
+      .bottom  { grid-template-columns: 1fr 1fr; }
+    }
+    @media (max-width: 700px) {
+      .app { grid-template-columns: 1fr; grid-template-rows: 54px auto 1fr; }
+      .sidebar { display: none; }
+      .metrics, .bottom { grid-template-columns: 1fr; }
+    }
+  </style>
+</head>
+<body>
+
+<div class="app">
+
+  <!-- ══ TOP BAR ══ -->
+  <header class="topbar">
+    <div class="topbar-left">
+      <div class="logo">
+        <i class="ti ti-shield-check"></i>
+        Sentinel<span>AI</span>
+      </div>
+      <div class="live-pill"><div class="live-dot"></div>Live monitoring</div>
+    </div>
+    <div class="topbar-right">
+      <span class="topbar-badge badge-red"><i class="ti ti-alert-triangle"></i> 3 critical</span>
+      <span class="topbar-badge badge-amber">7 high</span>
+      <span class="clock" id="clock">--:--:--</span>
+      <button class="btn-icon" onclick="refreshMetrics()" title="Refresh data">
+        <i class="ti ti-refresh"></i>
+      </button>
+      <button class="btn-icon" title="Settings">
+        <i class="ti ti-settings"></i>
+      </button>
+    </div>
+  </header>
+
+  <!-- ══ SIDEBAR ══ -->
+  <nav class="sidebar">
+    <span class="nav-section-label">Monitor</span>
+    <a class="nav-item active" data-page="overview"><i class="ti ti-layout-dashboard"></i> Overview <span class="nav-badge">10</span></a>
+    <a class="nav-item" data-page="threatfeed"><i class="ti ti-activity"></i> Threat feed</a>
+    <a class="nav-item" data-page="geoorigins"><i class="ti ti-world"></i> Geo origins</a>
+
+    <span class="nav-section-label">Detect</span>
+    <a class="nav-item" data-page="aimodels"><i class="ti ti-brain"></i> AI models</a>
+    <a class="nav-item" data-page="anomalies"><i class="ti ti-eye"></i> Anomalies</a>
+    <a class="nav-item" data-page="malwarescan"><i class="ti ti-virus"></i> Malware scan</a>
+
+    <span class="nav-section-label">Respond</span>
+    <a class="nav-item" data-page="authlog"><i class="ti ti-lock"></i> Auth log</a>
+    <a class="nav-item" data-page="alerts"><i class="ti ti-bell"></i> Alerts</a>
+    <a class="nav-item" data-page="reports"><i class="ti ti-file-report"></i> Reports</a>
+
+    <span class="nav-section-label">Admin</span>
+    <a class="nav-item" data-page="users"><i class="ti ti-users"></i> Users</a>
+    <a class="nav-item" data-page="settings"><i class="ti ti-settings"></i> Settings</a>
+  </nav>
+
+  <!-- ══ MAIN CONTENT ══ -->
+  <main class="main">
+
+    <!-- ══════ OVERVIEW ══════ -->
+    <div class="page-section active" data-page="overview">
+    <!-- Metric cards -->
+    <div class="metrics">
+      <div class="metric danger">
+        <div class="metric-label"><i class="ti ti-virus"></i> Threats detected</div>
+        <div class="metric-value" id="m-threats">1,247</div>
+        <div class="metric-sub up" id="m-threats-sub">↑ 18% vs yesterday</div>
+      </div>
+      <div class="metric warn">
+        <div class="metric-label"><i class="ti ti-eye"></i> Anomalies flagged</div>
+        <div class="metric-value" id="m-anom">83</div>
+        <div class="metric-sub">Last 60 min</div>
+      </div>
+      <div class="metric info">
+        <div class="metric-label"><i class="ti ti-lock"></i> Auth failures</div>
+        <div class="metric-value" id="m-auth">512</div>
+        <div class="metric-sub up">↑ 41% spike</div>
+      </div>
+      <div class="metric ok">
+        <div class="metric-label"><i class="ti ti-check"></i> Model accuracy</div>
+        <div class="metric-value" id="m-acc">97.3%</div>
+        <div class="metric-sub down">↑ 0.4% this week</div>
+      </div>
+    </div>
+
+    <!-- Mid row -->
+    <div class="mid">
+
+      <!-- Live threat feed -->
+      <div class="card">
+        <div class="card-header">
+          <div class="card-title"><i class="ti ti-activity"></i> Live threat feed</div>
+          <span class="topbar-badge badge-red" id="feed-count">12 active</span>
+        </div>
+        <div class="threat-feed" id="threat-feed"></div>
+      </div>
+
+      <!-- Geographic attack origins -->
+      <div class="card">
+        <div class="card-header">
+          <div class="card-title"><i class="ti ti-world"></i> Attack origins</div>
+          <span style="font-size:10px;color:var(--text-tertiary);font-family:var(--font-mono)">last 24h</span>
+        </div>
+        <div class="geo-list" id="geo-list"></div>
+      </div>
+
+    </div>
+
+    <!-- Bottom row -->
+    <div class="bottom">
+
+      <!-- Model performance + sparkline -->
+      <div class="card">
+        <div class="card-header">
+          <div class="card-title"><i class="ti ti-brain"></i> Model performance</div>
+          <select id="model-filter" onchange="renderModels(this.value)"
+            style="background:var(--bg-elevated);border:1px solid var(--border);color:var(--text-secondary);border-radius:var(--radius-sm);padding:3px 7px;font-size:11px;cursor:pointer;">
+            <option value="all">All models</option>
+            <option value="top">Top 3</option>
+          </select>
+        </div>
+        <div class="model-list" id="model-list"></div>
+        <div style="font-size:10px;color:var(--text-tertiary);font-family:var(--font-mono);margin-top:12px;margin-bottom:4px">
+          Threat volume — last 24h (hourly)
+        </div>
+        <div class="sparkline" id="sparkline"></div>
+      </div>
+
+      <!-- Alert log -->
+      <div class="card">
+        <div class="card-header">
+          <div class="card-title"><i class="ti ti-bell"></i> Alert log</div>
+        </div>
+        <div class="alert-feed" id="alert-feed"></div>
+      </div>
+
+      <!-- Auth stats + threat type donut -->
+      <div class="card">
+        <div class="card-header">
+          <div class="card-title"><i class="ti ti-chart-pie"></i> At a glance</div>
+        </div>
+        <div class="stat-grid">
+          <div class="stat-cell"><div class="stat-val">2.1k</div><div class="stat-lbl">Logins today</div></div>
+          <div class="stat-cell"><div class="stat-val" style="color:var(--red)">512</div><div class="stat-lbl">Failed auth</div></div>
+          <div class="stat-cell"><div class="stat-val">34</div><div class="stat-lbl">Brute force</div></div>
+          <div class="stat-cell"><div class="stat-val" style="color:var(--green)">98%</div><div class="stat-lbl">MFA coverage</div></div>
+        </div>
+        <div class="chart-wrap">
+          <canvas id="typeChart" role="img"
+            aria-label="Threat type distribution: Malware 38%, Phishing 27%, DDoS 19%, Injection 16%">
+            Malware 38%, Phishing 27%, DDoS 19%, Injection 16%.
+          </canvas>
+        </div>
+        <!-- Custom legend -->
+        <div style="display:flex;flex-wrap:wrap;gap:10px;margin-top:8px">
+          <span style="display:flex;align-items:center;gap:4px;font-size:10px;color:var(--text-secondary)">
+            <span style="width:8px;height:8px;border-radius:2px;background:#e24b4a;display:inline-block"></span>Malware 38%
+          </span>
+          <span style="display:flex;align-items:center;gap:4px;font-size:10px;color:var(--text-secondary)">
+            <span style="width:8px;height:8px;border-radius:2px;background:#ef9f27;display:inline-block"></span>Phishing 27%
+          </span>
+          <span style="display:flex;align-items:center;gap:4px;font-size:10px;color:var(--text-secondary)">
+            <span style="width:8px;height:8px;border-radius:2px;background:#378add;display:inline-block"></span>DDoS 19%
+          </span>
+          <span style="display:flex;align-items:center;gap:4px;font-size:10px;color:var(--text-secondary)">
+            <span style="width:8px;height:8px;border-radius:2px;background:#a78bfa;display:inline-block"></span>Injection 16%
+          </span>
+        </div>
+      </div>
+
+    </div>
+
+    <!-- Response actions -->
+    <div class="card">
+      <div class="card-header">
+        <div class="card-title"><i class="ti ti-settings-automation"></i> Response actions</div>
+      </div>
+      <div class="actions">
+        <button class="action-btn primary" onclick="triggerContainment()">
+          <i class="ti ti-player-play"></i> Auto-contain threats
+        </button>
+        <button class="action-btn" onclick="exportReport()">
+          <i class="ti ti-file-export"></i> Export report
+        </button>
+        <button class="action-btn" onclick="runScan()">
+          <i class="ti ti-scan"></i> Run deep scan
+        </button>
+        <button class="action-btn" onclick="blockIPs()">
+          <i class="ti ti-ban"></i> Block flagged IPs
+        </button>
+        <button class="action-btn" onclick="notifyTeam()">
+          <i class="ti ti-bell-ringing"></i> Notify team
+        </button>
+        <button class="action-btn" onclick="viewModels()">
+          <i class="ti ti-brain"></i> Model explainability
+        </button>
+      </div>
+    </div>
+    </div><!-- /overview -->
+
+    <!-- ══════ THREAT FEED ══════ -->
+    <div class="page-section" data-page="threatfeed">
+      <div class="page-header">
+        <div><div class="page-title"><i class="ti ti-activity"></i> Threat Feed</div>
+        <div class="page-desc">Real-time incoming threats with severity classification</div></div>
+        <div style="display:flex;gap:8px">
+          <select id="sev-filter" onchange="renderThreatTable()" class="form-input" style="padding:5px 10px;font-size:11px">
+            <option value="all">All severity</option>
+            <option value="critical">Critical</option>
+            <option value="high">High</option>
+            <option value="medium">Medium</option>
+          </select>
+        </div>
+      </div>
+      <div class="card">
+        <table class="data-table" id="threat-table">
+          <thead><tr><th>Threat</th><th>Source</th><th>Severity</th><th>Time</th><th>Action</th></tr></thead>
+          <tbody id="threat-table-body"></tbody>
+        </table>
+      </div>
+    </div>
+
+    <!-- ══════ GEO ORIGINS ══════ -->
+    <div class="page-section" data-page="geoorigins">
+      <div class="page-header">
+        <div><div class="page-title"><i class="ti ti-world"></i> Geo Origins</div>
+        <div class="page-desc">Geographic distribution of attack sources</div></div>
+      </div>
+      <div class="card">
+        <table class="data-table">
+          <thead><tr><th>Country</th><th>Attacks</th><th>% of total</th><th>Trend</th><th>Status</th></tr></thead>
+          <tbody id="geo-table-body"></tbody>
+        </table>
+      </div>
+    </div>
+
+    <!-- ══════ AI MODELS ══════ -->
+    <div class="page-section" data-page="aimodels">
+      <div class="page-header">
+        <div><div class="page-title"><i class="ti ti-brain"></i> AI Models</div>
+        <div class="page-desc">Detection model performance and comparison</div></div>
+        <button class="action-btn" onclick="showToast('info','Model retraining queued for all models below 95% accuracy.')"><i class="ti ti-refresh"></i> Retrain low performers</button>
+      </div>
+      <div class="card">
+        <table class="data-table">
+          <thead><tr><th>Model</th><th>Accuracy</th><th>Precision</th><th>Recall</th><th>F1</th><th>Status</th></tr></thead>
+          <tbody id="model-table-body"></tbody>
+        </table>
+      </div>
+    </div>
+
+    <!-- ══════ ANOMALIES ══════ -->
+    <div class="page-section" data-page="anomalies">
+      <div class="page-header">
+        <div><div class="page-title"><i class="ti ti-eye"></i> Anomalies</div>
+        <div class="page-desc">Flagged anomalous behaviour detected by AI models</div></div>
+      </div>
+      <div class="card">
+        <table class="data-table">
+          <thead><tr><th>Event</th><th>Entity</th><th>Score</th><th>Model</th><th>Time</th><th>Action</th></tr></thead>
+          <tbody id="anomaly-table-body"></tbody>
+        </table>
+      </div>
+    </div>
+
+    <!-- ══════ MALWARE SCAN ══════ -->
+    <div class="page-section" data-page="malwarescan">
+      <div class="page-header">
+        <div><div class="page-title"><i class="ti ti-virus"></i> Malware Scan</div>
+        <div class="page-desc">Recent and ongoing malware scan results</div></div>
+        <button class="action-btn primary" onclick="startMalwareScan()"><i class="ti ti-player-play"></i> Start scan</button>
+      </div>
+      <div class="metrics" style="grid-template-columns:repeat(3,1fr)">
+        <div class="metric danger"><div class="metric-label"><i class="ti ti-virus"></i> Infected files</div><div class="metric-value">23</div><div class="metric-sub up">↑ 4 new</div></div>
+        <div class="metric ok"><div class="metric-label"><i class="ti ti-check"></i> Clean files</div><div class="metric-value">4,891</div><div class="metric-sub">Scanned</div></div>
+        <div class="metric info"><div class="metric-label"><i class="ti ti-clock"></i> Last scan</div><div class="metric-value">14:32</div><div class="metric-sub">2h ago</div></div>
+      </div>
+      <div class="card">
+        <table class="data-table">
+          <thead><tr><th>File</th><th>Path</th><th>Threat</th><th>Severity</th><th>Action</th></tr></thead>
+          <tbody id="malware-table-body"></tbody>
+        </table>
+      </div>
+    </div>
+
+    <!-- ══════ AUTH LOG ══════ -->
+    <div class="page-section" data-page="authlog">
+      <div class="page-header">
+        <div><div class="page-title"><i class="ti ti-lock"></i> Auth Log</div>
+        <div class="page-desc">Authentication events and failure analysis</div></div>
+      </div>
+      <div class="card">
+        <table class="data-table">
+          <thead><tr><th>User</th><th>IP</th><th>Action</th><th>Result</th><th>Time</th></tr></thead>
+          <tbody id="auth-table-body"></tbody>
+        </table>
+      </div>
+    </div>
+
+    <!-- ══════ ALERTS ══════ -->
+    <div class="page-section" data-page="alerts">
+      <div class="page-header">
+        <div><div class="page-title"><i class="ti ti-bell"></i> Alerts</div>
+        <div class="page-desc">Active security alerts requiring attention</div></div>
+        <div style="display:flex;gap:8px">
+          <button class="action-btn" onclick="showToast('success','All alerts acknowledged.')"><i class="ti ti-check"></i> Acknowledge all</button>
+          <button class="action-btn primary" onclick="triggerContainment()"><i class="ti ti-player-play"></i> Auto-contain</button>
+        </div>
+      </div>
+      <div class="card">
+        <div class="alert-feed" id="alert-feed-page" style="max-height:none"></div>
+      </div>
+    </div>
+
+    <!-- ══════ REPORTS ══════ -->
+    <div class="page-section" data-page="reports">
+      <div class="page-header">
+        <div><div class="page-title"><i class="ti ti-file-report"></i> Reports</div>
+        <div class="page-desc">Generated threat and compliance reports</div></div>
+        <button class="action-btn" onclick="exportReport()"><i class="ti ti-file-export"></i> Generate report</button>
+      </div>
+      <div class="card">
+        <table class="data-table">
+          <thead><tr><th>Report</th><th>Type</th><th>Generated</th><th>Size</th><th>Action</th></tr></thead>
+          <tbody id="report-table-body"></tbody>
+        </table>
+      </div>
+    </div>
+
+    <!-- ══════ USERS ══════ -->
+    <div class="page-section" data-page="users">
+      <div class="page-header">
+        <div><div class="page-title"><i class="ti ti-users"></i> Users</div>
+        <div class="page-desc">User account management and access control</div></div>
+        <button class="action-btn" onclick="showToast('info','Invite sent to new user.')"><i class="ti ti-user-plus"></i> Invite user</button>
+      </div>
+      <div class="card">
+        <table class="data-table">
+          <thead><tr><th>Name</th><th>Email</th><th>Role</th><th>MFA</th><th>Last active</th><th>Status</th></tr></thead>
+          <tbody id="user-table-body"></tbody>
+        </table>
+      </div>
+    </div>
+
+    <!-- ══════ SETTINGS ══════ -->
+    <div class="page-section" data-page="settings">
+      <div class="page-header">
+        <div><div class="page-title"><i class="ti ti-settings"></i> Settings</div>
+        <div class="page-desc">System configuration and preferences</div></div>
+      </div>
+      <div class="card">
+        <div class="card-header"><div class="card-title"><i class="ti ti-bell"></i> Notifications</div></div>
+        <div class="toggle-wrap">
+          <div><div class="toggle-label">Critical alerts</div><div class="toggle-desc">Send immediate notifications for critical threats</div></div>
+          <div class="toggle on" onclick="this.classList.toggle('on')"></div>
+        </div>
+        <div class="toggle-wrap">
+          <div><div class="toggle-label">High severity alerts</div><div class="toggle-desc">Email alerts for high severity events</div></div>
+          <div class="toggle on" onclick="this.classList.toggle('on')"></div>
+        </div>
+        <div class="toggle-wrap">
+          <div><div class="toggle-label">Daily digest</div><div class="toggle-desc">Daily summary of all security events</div></div>
+          <div class="toggle" onclick="this.classList.toggle('on')"></div>
+        </div>
+        <div class="toggle-wrap">
+          <div><div class="toggle-label">Slack integration</div><div class="toggle-desc">Post alerts to #soc-alerts channel</div></div>
+          <div class="toggle on" onclick="this.classList.toggle('on')"></div>
+        </div>
+      </div>
+      <div class="card">
+        <div class="card-header"><div class="card-title"><i class="ti ti-shield-check"></i> Security</div></div>
+        <div class="toggle-wrap">
+          <div><div class="toggle-label">Auto-containment</div><div class="toggle-desc">Automatically isolate hosts with critical threats</div></div>
+          <div class="toggle" onclick="this.classList.toggle('on')"></div>
+        </div>
+        <div class="toggle-wrap">
+          <div><div class="toggle-label">IP auto-block</div><div class="toggle-desc">Block flagged IPs after 3 consecutive alerts</div></div>
+          <div class="toggle on" onclick="this.classList.toggle('on')"></div>
+        </div>
+        <div class="toggle-wrap">
+          <div><div class="toggle-label">MFA enforcement</div><div class="toggle-desc">Require MFA for all user accounts</div></div>
+          <div class="toggle on" onclick="this.classList.toggle('on')"></div>
+        </div>
+      </div>
+      <div class="card">
+        <div class="card-header"><div class="card-title"><i class="ti ti-database"></i> Data retention</div></div>
+        <div class="form-group" style="margin-top:8px">
+          <label class="form-label">Retention period</label>
+          <select class="form-input" style="width:200px" onchange="showToast('success','Retention period updated to ' + this.value + ' days.')">
+            <option value="30">30 days</option>
+            <option value="60">60 days</option>
+            <option value="90" selected>90 days</option>
+            <option value="180">180 days</option>
+            <option value="365">365 days</option>
+          </select>
+        </div>
+      </div>
+    </div>
+
+  </main>
+</div>
+
+<!-- Toast container -->
+<div class="toast-container" id="toast-container"></div>
+
+<!-- ══ APP JAVASCRIPT ══ -->
+<script>
+/* ─────────────────────────────────────────────────────
+   DATA  (in production: replace with API calls)
+───────────────────────────────────────────────────── */
+const THREATS = [
+  { name: 'SQL injection burst',    src: '192.168.4.21',   sev: 'critical', icon: 'ti-code',           ago: '0:12s' },
+  { name: 'Credential stuffing',    src: '10.0.8.112',     sev: 'critical', icon: 'ti-user-x',         ago: '0:38s' },
+  { name: 'Ransomware C2 callback', src: '172.16.3.9',     sev: 'critical', icon: 'ti-virus',          ago: '1:04s' },
+  { name: 'Port scan sweep',        src: '203.45.12.7',    sev: 'high',     icon: 'ti-radar',          ago: '1:22s' },
+  { name: 'Phishing payload',       src: 'mail.ext-srv.io',sev: 'high',     icon: 'ti-mail-x',         ago: '2:11s' },
+  { name: 'XSS attempt',            src: 'api.frontend.dev',sev: 'high',    icon: 'ti-code-asterisk',  ago: '3:05s' },
+  { name: 'Anomalous login',        src: '185.220.101.3',  sev: 'medium',   icon: 'ti-login',          ago: '4:17s' },
+  { name: 'Data exfil pattern',     src: '10.10.5.44',     sev: 'medium',   icon: 'ti-database-export',ago: '5:30s' },
+];
+
+const GEO_DATA = [
+  { flag: '🇨🇳', name: 'China',     count: 312 },
+  { flag: '🇷🇺', name: 'Russia',    count: 248 },
+  { flag: '🇰🇵', name: 'N. Korea',  count: 187 },
+  { flag: '🇮🇷', name: 'Iran',      count: 143 },
+  { flag: '🇷🇴', name: 'Romania',   count: 98  },
+  { flag: '🇧🇷', name: 'Brazil',    count: 67  },
+];
+
+const MODELS = [
+  { name: 'XGBoost',          acc: 98.7, color: '#22c55e' },
+  { name: 'Random Forest',    acc: 97.9, color: '#3b82f6' },
+  { name: 'LSTM',             acc: 96.4, color: '#a78bfa' },
+  { name: 'Isolation Forest', acc: 95.8, color: '#ef9f27' },
+  { name: 'SVM',              acc: 94.2, color: '#e24b4a' },
+  { name: 'Logistic Reg.',    acc: 91.1, color: '#64748b' },
+];
+
+const SPARK_DATA = [34,52,28,67,89,43,71,95,58,112,78,134,99,87,143,108,67,155,123,98,176,142,118,88];
+
+const ALERTS = [
+  { sev: 'critical', text: 'Ransomware C2 callback on WIN-PROD-04 — isolate recommended', ts: '2 min ago' },
+  { sev: 'critical', text: 'Mass credential dump — 847 accounts targeted via stuffing', ts: '5 min ago' },
+  { sev: 'high',     text: 'Lateral movement: 10.0.8.112 → DB subnet via SMB', ts: '11 min ago' },
+  { sev: 'high',     text: 'DDoS amplification via open DNS resolver — 4.2 Gbps', ts: '19 min ago' },
+  { sev: 'medium',   text: 'Anomalous API call pattern on /v1/auth/token', ts: '27 min ago' },
+];
+
+/* ─────────────────────────────────────────────────────
+   RENDER  functions
+───────────────────────────────────────────────────── */
+function renderThreatFeed () {
+  document.getElementById('threat-feed').innerHTML = THREATS.map(t => `
+    <div class="threat-row">
+      <div class="threat-icon t-${t.sev}"><i class="ti ${t.icon}" aria-hidden="true"></i></div>
+      <div style="flex:1;min-width:0">
+        <div class="threat-name">${t.name}</div>
+        <div class="threat-meta">${t.src}</div>
+      </div>
+      <div style="display:flex;flex-direction:column;align-items:flex-end;gap:3px">
+        <span class="sev-pill sev-${t.sev}">${t.sev}</span>
+        <span style="font-size:10px;color:var(--text-tertiary);font-family:var(--font-mono)">${t.ago} ago</span>
+      </div>
+    </div>`).join('');
+}
+
+function renderGeo () {
+  const max = Math.max(...GEO_DATA.map(g => g.count));
+  document.getElementById('geo-list').innerHTML = GEO_DATA.map(g => `
+    <div class="geo-row">
+      <span class="geo-flag">${g.flag}</span>
+      <span class="geo-name">${g.name}</span>
+      <div class="geo-bar-wrap">
+        <div class="geo-bar" style="width:${Math.round(g.count / max * 100)}%"></div>
+      </div>
+      <span class="geo-count">${g.count}</span>
+    </div>`).join('');
+}
+
+function renderModels (filter = 'all') {
+  const list = filter === 'top' ? MODELS.slice(0, 3) : MODELS;
+  document.getElementById('model-list').innerHTML = list.map(m => `
+    <div class="model-row">
+      <span class="model-name">${m.name}</span>
+      <div class="acc-bar-wrap">
+        <div class="acc-bar" style="width:${m.acc}%;background:${m.color}"></div>
+      </div>
+      <span class="acc-val">${m.acc}%</span>
+    </div>`).join('');
+}
+
+function renderSparkline () {
+  const max = Math.max(...SPARK_DATA);
+  document.getElementById('sparkline').innerHTML = SPARK_DATA.map((v, i) => {
+    const pct = Math.round(v / max * 100);
+    const isLast = i === SPARK_DATA.length - 1;
+    return `<div class="spark-bar" style="height:${pct}%;opacity:${isLast ? 1 : 0.45}" title="Hour ${i}: ${v} threats"></div>`;
+  }).join('');
+}
+
+function renderAlerts () {
+  document.getElementById('alert-feed').innerHTML = ALERTS.map(a => `
+    <div class="alert-item ${a.sev}">
+      <div class="alert-text">${a.text}</div>
+      <div class="alert-ts">${a.ts}</div>
+    </div>`).join('');
+}
+
+/* ─────────────────────────────────────────────────────
+   CLOCK
+───────────────────────────────────────────────────── */
+function updateClock () {
+  document.getElementById('clock').textContent = new Date().toLocaleTimeString();
+}
+
+/* ─────────────────────────────────────────────────────
+   METRICS  refresh (simulates live polling)
+───────────────────────────────────────────────────── */
+function refreshMetrics () {
+  document.getElementById('m-threats').textContent =
+    (1200 + Math.floor(Math.random() * 100)).toLocaleString();
+  document.getElementById('m-anom').textContent =
+    70 + Math.floor(Math.random() * 30);
+  document.getElementById('m-auth').textContent =
+    480 + Math.floor(Math.random() * 80);
+}
+
+/* ─────────────────────────────────────────────────────
+   TOAST NOTIFICATION SYSTEM
+───────────────────────────────────────────────────── */
+function showToast (type, msg) {
+  const icons = { success:'ti-circle-check', danger:'ti-circle-x', info:'ti-info-circle', warn:'ti-alert-triangle' };
+  const el = document.createElement('div');
+  el.className = `toast toast-${type}`;
+  el.innerHTML = `<i class="ti ${icons[type] || icons.info}"></i><span>${msg}</span>`;
+  document.getElementById('toast-container').appendChild(el);
+  requestAnimationFrame(() => el.classList.add('show'));
+  setTimeout(() => { el.classList.remove('show'); setTimeout(() => el.remove(), 300); }, 3500);
+}
+
+/* ─────────────────────────────────────────────────────
+   NAVIGATION  —  switch pages in the sidebar
+───────────────────────────────────────────────────── */
+function navigateTo (page) {
+  // Update sidebar active state
+  document.querySelectorAll('.nav-item').forEach(n => n.classList.remove('active'));
+  const activeNav = document.querySelector(`.nav-item[data-page="${page}"]`);
+  if (activeNav) activeNav.classList.add('active');
+  // Show/hide page sections
+  document.querySelectorAll('.page-section').forEach(s => s.classList.remove('active'));
+  const activeSection = document.querySelector(`.page-section[data-page="${page}"]`);
+  if (activeSection) activeSection.classList.add('active');
+  // Scroll main to top
+  document.querySelector('.main').scrollTop = 0;
+}
+
+// Attach click handlers to nav items
+document.querySelectorAll('.nav-item').forEach(item => {
+  item.addEventListener('click', e => {
+    e.preventDefault();
+    const page = item.getAttribute('data-page');
+    if (page) navigateTo(page);
+  });
+});
+
+/* ─────────────────────────────────────────────────────
+   ACTION STUBS (wire to your backend)
+───────────────────────────────────────────────────── */
+function triggerContainment () { showToast('danger', 'Auto-containment triggered for 3 critical threats.'); }
+function exportReport ()       { showToast('info', 'Generating PDF threat report…'); }
+function runScan ()            { showToast('info', 'Deep scan initiated across 42 endpoints.'); }
+function blockIPs ()           { showToast('warn', '12 flagged IPs added to blocklist.'); }
+function notifyTeam ()         { showToast('success', 'SOC team notified via Slack + PagerDuty.'); }
+function viewModels ()         { showToast('info', 'Opening model explainability view…'); }
+function startMalwareScan ()   { showToast('info', 'Full malware scan started on all endpoints.'); }
+
+/* ─────────────────────────────────────────────────────
+   CHART.JS  donut
+───────────────────────────────────────────────────── */
+function initDonut () {
+  new Chart(document.getElementById('typeChart'), {
+    type: 'doughnut',
+    data: {
+      labels: ['Malware', 'Phishing', 'DDoS', 'Injection'],
+      datasets: [{
+        data: [38, 27, 19, 16],
+        backgroundColor: ['#e24b4a', '#ef9f27', '#378add', '#a78bfa'],
+        borderWidth: 0,
+        hoverOffset: 4,
+      }]
+    },
+    options: {
+      responsive: true,
+      maintainAspectRatio: false,
+      cutout: '68%',
+      plugins: {
+        legend: { display: false },
+        tooltip: {
+          callbacks: { label: ctx => ` ${ctx.label}: ${ctx.raw}%` }
+        }
+      }
+    }
+  });
+}
+
+/* ─────────────────────────────────────────────────────
+   PAGE DATA  (in production: replace with API calls)
+───────────────────────────────────────────────────── */
+const ANOMALIES_DATA = [
+  { event: 'Unusual data transfer', entity: 'srv-prod-12', score: 0.94, model: 'Isolation Forest', time: '3 min ago' },
+  { event: 'Privilege escalation attempt', entity: 'WIN-DC-01', score: 0.89, model: 'XGBoost', time: '8 min ago' },
+  { event: 'Off-hours login pattern', entity: 'j.chen', score: 0.82, model: 'LSTM', time: '14 min ago' },
+  { event: 'API rate spike', entity: '10.0.8.44', score: 0.78, model: 'Random Forest', time: '22 min ago' },
+  { event: 'DNS tunneling signature', entity: '172.16.3.9', score: 0.91, model: 'XGBoost', time: '31 min ago' },
+  { event: 'Lateral movement pattern', entity: '10.0.8.112', score: 0.87, model: 'LSTM', time: '45 min ago' },
+];
+
+const MALWARE_DATA = [
+  { file: 'update.exe', path: 'C:\\Windows\\Temp\\', threat: 'TrickBot', sev: 'critical' },
+  { file: 'svc_host.dll', path: 'C:\\System32\\', threat: 'Emotet', sev: 'critical' },
+  { file: 'chrome_helper.bat', path: 'C:\\Users\\app\\', threat: 'Cobalt Strike', sev: 'high' },
+  { file: 'README_DECRYPT.txt', path: 'D:\\Data\\', threat: 'Ransomware', sev: 'critical' },
+  { file: 'svchost.exe', path: 'C:\\Windows\\', threat: 'Rootkit', sev: 'high' },
+];
+
+const AUTH_DATA = [
+  { user: 'admin', ip: '185.220.101.3', action: 'Login', result: 'Failed', time: '0:42s ago' },
+  { user: 'j.chen', ip: '10.0.3.21', action: 'Login', result: 'Success', time: '1:15s ago' },
+  { user: 'svc_backup', ip: '192.168.1.50', action: 'Login', result: 'Failed', time: '2:03s ago' },
+  { user: 'admin', ip: '185.220.101.3', action: 'Login', result: 'Failed', time: '2:48s ago' },
+  { user: 'm.kowalski', ip: '10.0.3.44', action: 'Password change', result: 'Success', time: '4:10s ago' },
+  { user: 'admin', ip: '185.220.101.3', action: 'Login', result: 'Failed', time: '5:22s ago' },
+  { user: 'deploy_bot', ip: '10.0.8.100', action: 'API key rotation', result: 'Success', time: '7:01s ago' },
+  { user: 'a.patel', ip: '203.45.12.7', action: 'Login', result: 'Failed', time: '8:30s ago' },
+];
+
+const REPORTS_DATA = [
+  { name: 'Weekly threat summary', type: 'Threat', generated: 'Today, 09:00', size: '2.4 MB' },
+  { name: 'Compliance audit Q1', type: 'Compliance', generated: 'Yesterday', size: '5.1 MB' },
+  { name: 'Incident post-mortem #412', type: 'Incident', generated: '3 days ago', size: '1.8 MB' },
+  { name: 'Monthly malware report', type: 'Malware', generated: '1 week ago', size: '3.2 MB' },
+  { name: 'Auth failure analysis', type: 'Auth', generated: '2 weeks ago', size: '890 KB' },
+];
+
+const USERS_DATA = [
+  { name: 'Sarah Connor', email: 's.connor@corp.io', role: 'Admin', mfa: true, active: '2 min ago', status: 'online' },
+  { name: 'James Chen', email: 'j.chen@corp.io', role: 'Analyst', mfa: true, active: '15 min ago', status: 'online' },
+  { name: 'Mira Kowalski', email: 'm.kowalski@corp.io', role: 'Analyst', mfa: true, active: '1h ago', status: 'online' },
+  { name: 'Alex Patel', email: 'a.patel@corp.io', role: 'Viewer', mfa: false, active: '3h ago', status: 'offline' },
+  { name: 'Deploy Bot', email: 'svc_deploy@corp.io', role: 'Service', mfa: true, active: '5 min ago', status: 'online' },
+  { name: 'Backup Service', email: 'svc_backup@corp.io', role: 'Service', mfa: true, active: '1h ago', status: 'online' },
+];
+
+/* ─────────────────────────────────────────────────────
+   PAGE RENDERERS
+───────────────────────────────────────────────────── */
+function renderThreatTable () {
+  const filter = document.getElementById('sev-filter').value;
+  const list = filter === 'all' ? THREATS : THREATS.filter(t => t.sev === filter);
+  document.getElementById('threat-table-body').innerHTML = list.map(t => `
+    <tr>
+      <td style="color:var(--text-primary);font-weight:500">${t.name}</td>
+      <td><span style="font-family:var(--font-mono);font-size:11px">${t.src}</span></td>
+      <td><span class="sev-pill sev-${t.sev}">${t.sev}</span></td>
+      <td style="font-family:var(--font-mono);font-size:11px;color:var(--text-tertiary)">${t.ago} ago</td>
+      <td><button class="action-btn" style="padding:3px 8px;font-size:10px" onclick="showToast('info','Investigating ${t.name}…')"><i class="ti ti-search"></i> Investigate</button></td>
+    </tr>`).join('');
+}
+
+function renderGeoTable () {
+  const total = GEO_DATA.reduce((s, g) => s + g.count, 0);
+  const trends = ['↑ +12%', '↑ +8%', '↓ -3%', '↑ +5%', '↓ -2%', '↓ -7%'];
+  document.getElementById('geo-table-body').innerHTML = GEO_DATA.map((g, i) => `
+    <tr>
+      <td style="font-size:16px">${g.flag} <span style="color:var(--text-primary);font-weight:500;margin-left:6px">${g.name}</span></td>
+      <td style="font-family:var(--font-mono)">${g.count}</td>
+      <td><div style="display:flex;align-items:center;gap:8px"><div style="flex:1;height:4px;background:var(--bg-hover);border-radius:2px;overflow:hidden"><div style="width:${Math.round(g.count/total*100*2.5)}%;height:100%;background:var(--red);border-radius:2px"></div></div><span style="font-size:11px;font-family:var(--font-mono);color:var(--text-tertiary)">${Math.round(g.count/total*100)}%</span></div></td>
+      <td style="font-family:var(--font-mono);font-size:11px;color:${trends[i].includes('+') ? 'var(--red)' : 'var(--green)'}">${trends[i]}</td>
+      <td><span class="sev-pill sev-${g.count > 200 ? 'critical' : g.count > 100 ? 'high' : 'medium'}">${g.count > 200 ? 'Critical' : g.count > 100 ? 'High' : 'Medium'}</span></td>
+    </tr>`).join('');
+}
+
+function renderModelTable () {
+  document.getElementById('model-table-body').innerHTML = MODELS.map(m => {
+    const prec = (m.acc - Math.random() * 3).toFixed(1);
+    const rec = (m.acc - Math.random() * 4).toFixed(1);
+    const f1 = ((+prec + +rec) / 2).toFixed(1);
+    const status = m.acc >= 96 ? 'Active' : m.acc >= 93 ? 'Review' : 'Retrain';
+    const statusCls = status === 'Active' ? 'sev-critical' : status === 'Review' ? 'sev-high' : 'sev-medium';
+    return `<tr>
+      <td style="color:var(--text-primary);font-weight:500">${m.name}</td>
+      <td><div style="display:flex;align-items:center;gap:8px"><div style="flex:1;height:5px;background:var(--bg-hover);border-radius:3px;overflow:hidden"><div style="width:${m.acc}%;height:100%;background:${m.color};border-radius:3px"></div></div><span style="font-family:var(--font-mono);font-size:11px">${m.acc}%</span></div></td>
+      <td style="font-family:var(--font-mono)">${prec}%</td>
+      <td style="font-family:var(--font-mono)">${rec}%</td>
+      <td style="font-family:var(--font-mono)">${f1}%</td>
+      <td><span class="sev-pill ${statusCls}">${status}</span></td>
+    </tr>`;
+  }).join('');
+}
+
+function renderAnomalyTable () {
+  document.getElementById('anomaly-table-body').innerHTML = ANOMALIES_DATA.map(a => {
+    const scoreColor = a.score >= 0.9 ? 'var(--red)' : a.score >= 0.8 ? 'var(--amber)' : 'var(--blue)';
+    return `<tr>
+      <td style="color:var(--text-primary);font-weight:500">${a.event}</td>
+      <td><span style="font-family:var(--font-mono);font-size:11px">${a.entity}</span></td>
+      <td style="font-family:var(--font-mono);color:${scoreColor};font-weight:500">${a.score.toFixed(2)}</td>
+      <td style="font-size:11px;color:var(--text-tertiary)">${a.model}</td>
+      <td style="font-family:var(--font-mono);font-size:11px;color:var(--text-tertiary)">${a.time}</td>
+      <td><button class="action-btn" style="padding:3px 8px;font-size:10px" onclick="showToast('info','Escalating ${a.event} to Tier 2 analyst.')"><i class="ti ti-arrow-up"></i> Escalate</button></td>
+    </tr>`;
+  }).join('');
+}
+
+function renderMalwareTable () {
+  document.getElementById('malware-table-body').innerHTML = MALWARE_DATA.map(m => `
+    <tr>
+      <td style="color:var(--text-primary);font-weight:500;font-family:var(--font-mono);font-size:12px">${m.file}</td>
+      <td style="font-family:var(--font-mono);font-size:11px;color:var(--text-tertiary)">${m.path}</td>
+      <td style="color:var(--text-primary)">${m.threat}</td>
+      <td><span class="sev-pill sev-${m.sev}">${m.sev}</span></td>
+      <td><button class="action-btn" style="padding:3px 8px;font-size:10px" onclick="showToast('danger','File ${m.file} quarantined.')"><i class="ti ti-quarantine"></i> Quarantine</button></td>
+    </tr>`).join('');
+}
+
+function renderAuthTable () {
+  document.getElementById('auth-table-body').innerHTML = AUTH_DATA.map(a => {
+    const fail = a.result === 'Failed';
+    return `<tr>
+      <td style="color:var(--text-primary);font-weight:500">${a.user}</td>
+      <td style="font-family:var(--font-mono);font-size:11px">${a.ip}</td>
+      <td>${a.action}</td>
+      <td><span class="sev-pill ${fail ? 'sev-critical' : 'sev-medium'}">${a.result}</span></td>
+      <td style="font-family:var(--font-mono);font-size:11px;color:var(--text-tertiary)">${a.time}</td>
+    </tr>`;
+  }).join('');
+}
+
+function renderAlertsPage () {
+  const moreAlerts = [
+    { sev: 'critical', text: 'Ransomware C2 callback on WIN-PROD-04 — isolate recommended', ts: '2 min ago' },
+    { sev: 'critical', text: 'Mass credential dump — 847 accounts targeted via stuffing', ts: '5 min ago' },
+    { sev: 'high', text: 'Lateral movement: 10.0.8.112 → DB subnet via SMB', ts: '11 min ago' },
+    { sev: 'high', text: 'DDoS amplification via open DNS resolver — 4.2 Gbps', ts: '19 min ago' },
+    { sev: 'medium', text: 'Anomalous API call pattern on /v1/auth/token', ts: '27 min ago' },
+    { sev: 'high', text: 'Suspicious PowerShell execution on WIN-HR-02', ts: '34 min ago' },
+    { sev: 'critical', text: 'Data exfiltration detected: 4.7 GB transferred to external host', ts: '41 min ago' },
+    { sev: 'medium', text: 'Unusual login location for svc_backup from 203.45.12.7', ts: '55 min ago' },
+  ];
+  document.getElementById('alert-feed-page').innerHTML = moreAlerts.map(a => `
+    <div class="alert-item ${a.sev}" style="cursor:pointer" onclick="showToast('info','Opening details for: ${a.text.substring(0,40)}…')">
+      <div class="alert-text">${a.text}</div>
+      <div class="alert-ts">${a.ts}</div>
+    </div>`).join('');
+}
+
+function renderReportTable () {
+  document.getElementById('report-table-body').innerHTML = REPORTS_DATA.map(r => `
+    <tr>
+      <td style="color:var(--text-primary);font-weight:500">${r.name}</td>
+      <td><span class="sev-pill sev-${r.type === 'Threat' ? 'critical' : r.type === 'Compliance' ? 'medium' : r.type === 'Incident' ? 'high' : 'medium'}">${r.type}</span></td>
+      <td style="font-size:11px;color:var(--text-tertiary)">${r.generated}</td>
+      <td style="font-family:var(--font-mono);font-size:11px">${r.size}</td>
+      <td><button class="action-btn" style="padding:3px 8px;font-size:10px" onclick="showToast('success','Downloading ${r.name}…')"><i class="ti ti-download"></i> Download</button></td>
+    </tr>`).join('');
+}
+
+function renderUserTable () {
+  document.getElementById('user-table-body').innerHTML = USERS_DATA.map(u => `
+    <tr>
+      <td style="color:var(--text-primary);font-weight:500">${u.name}</td>
+      <td style="font-family:var(--font-mono);font-size:11px">${u.email}</td>
+      <td><span class="sev-pill sev-${u.role === 'Admin' ? 'critical' : u.role === 'Analyst' ? 'high' : u.role === 'Service' ? 'medium' : 'medium'}">${u.role}</span></td>
+      <td>${u.mfa ? '<span style="color:var(--green)"><i class="ti ti-circle-check"></i> On</span>' : '<span style="color:var(--red)"><i class="ti ti-circle-x"></i> Off</span>'}</td>
+      <td style="font-family:var(--font-mono);font-size:11px;color:var(--text-tertiary)">${u.active}</td>
+      <td><span style="display:inline-flex;align-items:center;gap:4px;font-size:11px;color:${u.status === 'online' ? 'var(--green)' : 'var(--text-tertiary)'}"><span style="width:6px;height:6px;border-radius:50%;background:currentColor"></span>${u.status}</span></td>
+    </tr>`).join('');
+}
+
+/* ─────────────────────────────────────────────────────
+   INIT
+───────────────────────────────────────────────────── */
+renderThreatFeed();
+renderGeo();
+renderModels('all');
+renderSparkline();
+renderAlerts();
+updateClock();
+initDonut();
+
+// Render all page tables
+renderThreatTable();
+renderGeoTable();
+renderModelTable();
+renderAnomalyTable();
+renderMalwareTable();
+renderAuthTable();
+renderAlertsPage();
+renderReportTable();
+renderUserTable();
+
+setInterval(updateClock, 1000);
+
+/* Optional: auto-refresh metrics every 30s */
+// setInterval(refreshMetrics, 30_000);
+</script>
+
+</body>
+</html>
